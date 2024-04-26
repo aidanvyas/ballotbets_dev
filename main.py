@@ -147,7 +147,6 @@ def create_state_polling_averages():
 
     # Iterate through the states.
     for state in states:
-
         # Get the polling and past results for the state.
         state_polls = state_polling[state_polling['state'] == state]
         state_past_results = past_results[past_results['Location'] == state]
@@ -155,6 +154,9 @@ def create_state_polling_averages():
         # Get the past shares for Biden and Trump.
         biden_past_share = state_past_results['Biden Share'].values[0]
         trump_past_share = state_past_results['Trump Share'].values[0]
+
+        # Create a new DataFrame to store the state polling averages for the current state.
+        state_averages = pd.DataFrame(index=date_range, columns=['Joe Biden', 'Donald Trump'])
 
         # Iterate through the date range.
         for date in date_range:
@@ -211,6 +213,7 @@ def create_state_polling_averages():
         state_averages.to_csv(csv_file, index=False, mode='w')
 
         print(f"Finished processing {state} polling data.")
+
 
 
 
