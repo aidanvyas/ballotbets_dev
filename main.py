@@ -197,23 +197,21 @@ def create_state_polling_averages():
             state_averages.loc[date, 'Joe Biden'] = biden_state_avg
             state_averages.loc[date, 'Donald Trump'] = trump_state_avg
 
-        # Reset the index and rename the index column to 'Date'
+        # Reset the index
         state_averages.reset_index(inplace=True)
+
+        # Rename the 'index' column to 'Date'
         state_averages.rename(columns={'index': 'Date'}, inplace=True)
 
-        # Reorder the columns to have 'Date' as the first column
-        columns = ['Date'] + [col for col in state_averages.columns if col != 'Date']
-        state_averages = state_averages[columns]
+        # Select only the desired columns: 'Date', 'Joe Biden', 'Donald Trump'
+        state_averages = state_averages[['Date', 'Joe Biden', 'Donald Trump']]
 
-        # Clear the contents of the CSV file before writing
+        # Save the state polling averages to the CSV file, overwriting the existing file
         csv_file = f'state_polling_averages/{state}_polling_averages.csv'
-        with open(csv_file, 'w') as file:
-            file.truncate()
-
-        # Save the state polling averages to the CSV file
-        state_averages.to_csv(csv_file, index=False, mode='a')
+        state_averages.to_csv(csv_file, index=False, mode='w')
 
         print(f"Finished processing {state} polling data.")
+
 
 
 
