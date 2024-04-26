@@ -205,13 +205,9 @@ def create_state_polling_averages():
         columns = ['Date'] + [col for col in state_averages.columns if col != 'Date']
         state_averages = state_averages[columns]
 
-        # Clear the contents of the CSV file before writing
-        csv_file = f'state_polling_averages/{state}_polling_averages.csv'
-        with open(csv_file, 'w') as file:
-            file.truncate()
-
         # Save the state polling averages to the CSV file
-        state_averages.to_csv(csv_file, index=False, mode='a')
+        csv_file = f'state_polling_averages/{state}_polling_averages.csv'
+        state_averages.to_csv(csv_file, columns=['Date', 'Joe Biden', 'Donald Trump'], index=False)
 
         print(f"Finished processing {state} polling data.")
 
