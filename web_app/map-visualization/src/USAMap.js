@@ -55,7 +55,12 @@ const stateFipsMapping = {
   '54': 'West Virginia',
   '55': 'Wisconsin',
   '56': 'Wyoming',
-  // Include mappings for Maine and Nebraska congressional districts if necessary
+  // Include mappings for Maine and Nebraska congressional districts
+  'ME-01': 'Maine CD-1',
+  'ME-02': 'Maine CD-2',
+  'NE-01': 'Nebraska CD-1',
+  'NE-02': 'Nebraska CD-2',
+  'NE-03': 'Nebraska CD-3',
 };
 
 const USAMap = ({ winProbabilitiesCsv }) => {
@@ -113,7 +118,7 @@ const USAMap = ({ winProbabilitiesCsv }) => {
     const stateFips = feature.properties.STATEFP;
     const stateName = stateFipsMapping[stateFips];
     const probability = winProbabilities[stateName];
-    if (probability === undefined) {
+    if (typeof probability === 'undefined') {
       console.error(`No win probability found for: ${stateName}`);
       return {
         fillColor: 'grey',
@@ -142,10 +147,10 @@ const USAMap = ({ winProbabilitiesCsv }) => {
     const stateFips = feature.properties.STATEFP;
     const stateName = stateFipsMapping[stateFips];
     const probability = winProbabilities[stateName];
-    if (probability !== undefined) {
-      layer.bindPopup(`${stateName}: ${probability * 100}% chance`);
-    } else {
+    if (typeof probability === 'undefined') {
       layer.bindPopup(`${stateName}: No data available`);
+    } else {
+      layer.bindPopup(`${stateName}: ${probability * 100}% chance`);
     }
   };
 
