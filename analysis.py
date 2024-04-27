@@ -6,23 +6,25 @@ standard deviation for the exponential function used to calculate the weighted
 average of polling data.
 """
 
+
+import time
+
+import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import numpy as np
 from sklearn.metrics import mean_absolute_error, r2_score
-import statsmodels.api as sm
-from scipy.stats import norm
 
 
 def determine_optimal_lambda():
     """
-    Determine the optimal lambda value.
+    Determine the optimal lambda value for polling data.
 
-    This function loads data from a CSV file, calculates the optimal lambda
-    value based on R^2 and MAE metrics, and optionally plots the results.
+    This function loads polling data from a CSV file, calculates the optimal lambda value
+    by evaluating R^2 (coefficient of determination) and MAE (mean absolute error) for a range of lambda values,
+    and plots the evaluation metrics. It returns the average of the best lambda values for R^2 and MAE.
 
     Returns:
-        float: The average of the best lambdas for R^2 and MAE.
+        float: The average of the best lambda values for R^2 and MAE.
     """
     # Load the data from the CSV file.
     data = pd.read_csv('raw_polls.csv')
@@ -30,69 +32,46 @@ def determine_optimal_lambda():
     # Define a range of lambda values to test
     lambda_values = [i / 10000 for i in range(0, 10001)]
 
-    # Initialize variables to store the best lambdas, the highest R^2 and the lowest MAE
-    best_lambda_r2 = None
-    best_lambda_mae = None
-    highest_r2 = float('-inf')
-    lowest_mae = float('inf')
+    # Initialize variables to store the best lambdas and their corresponding metrics
+    best_lambda_r2, best_lambda_mae = None, None
+    highest_r2, lowest_mae = float('-inf'), float('inf')
 
-    # Initialize lists to store the R^2 and MAE values for each lambda
-    r2_values = []
-    mae_values = []
+    # Lists to store R^2 and MAE values for each lambda
+    r2_values, mae_values = [], []
 
-    # Iterate over the lambda values
+    # Evaluate each lambda
     for lambda_ in lambda_values:
-        # Initialize lists to store predicted and actual values, and the cycle names
-        predicted_values = []
-        actual_values = []
-        races = []
+        predicted_values, actual_values = [], []
 
-        # Group the data by 'race'
+        # Group the data by 'race' and perform calculations
         for race, group in data.groupby('race'):
-            # Calculate the weights for each poll in the cycle
             group['weight'] = np.exp(-lambda_ * group['time_to_election']) * np.sqrt(group['samplesize'])
-
-            # Normalize the weights
             group['weight'] /= group['weight'].sum()
-
-            # Calculate the weighted average of 'margin_poll' for the cycle
             weighted_avg = (group['margin_poll'] * group['weight']).sum()
 
-            # Append the predicted and actual values, and the cycle name to the lists
             predicted_values.append(weighted_avg)
             actual_values.append(group['margin_actual'].mean())
-            races.append(race)
 
-        # Calculate the R^2 and MAE for this lambda
+        # Calculate R^2 and MAE for this lambda
         r2 = r2_score(actual_values, predicted_values)
         mae = mean_absolute_error(actual_values, predicted_values)
 
-        # Append the R^2 and MAE values to the lists
         r2_values.append(r2)
         mae_values.append(mae)
 
-        # If this R^2 is higher than the highest R^2 we've seen so far,
-        # update the best lambda for R^2, the highest R^2
+        # Update best lambdas and metrics
         if r2 > highest_r2:
-            best_lambda_r2 = lambda_
-            highest_r2 = r2
-
-        # If this MAE is lower than the lowest MAE we've seen so far,
-        # update the best lambda for MAE, the lowest MAE
+            best_lambda_r2, highest_r2 = lambda_, r2
         if mae < lowest_mae:
-            best_lambda_mae = lambda_
-            lowest_mae = mae
+            best_lambda_mae, lowest_mae = lambda_, mae
 
         print(f"Lambda: {lambda_}, R^2: {r2}, MAE: {mae}")
 
-    # Print the best lambdas, the highest R^2 and the lowest MAE
-    print(f"Best lambda for R^2: {best_lambda_r2}")
-    print(f"Highest R^2: {highest_r2}")
-    print(f"Best lambda for MAE: {best_lambda_mae}")
-    print(f"Lowest MAE: {lowest_mae}")
+    # Print best lambda values and metrics
+    print(f"Best lambda for R^2: {best_lambda_r2}, Highest R^2: {highest_r2}")
+    print(f"Best lambda for MAE: {best_lambda_mae}, Lowest MAE: {lowest_mae}")
 
-    # Optional Plotting
-    # Plot the R^2 values
+    # Optional: Plotting the R^2 and MAE values against lambda
     plt.figure(figsize=(10, 5))
     plt.subplot(1, 2, 1)
     plt.plot(lambda_values, r2_values, marker='o')
@@ -100,7 +79,6 @@ def determine_optimal_lambda():
     plt.xlabel('Lambda')
     plt.ylabel('R^2')
 
-    # Plot the MAE values
     plt.subplot(1, 2, 2)
     plt.plot(lambda_values, mae_values, marker='o')
     plt.title('MAE values')
@@ -110,50 +88,57 @@ def determine_optimal_lambda():
     plt.tight_layout()
     plt.show()
 
-    # Return the average of the best lambdas for R^2 and MAE.
+    # Return the average of the best lambda values for R^2 and MAE
     return (best_lambda_r2 + best_lambda_mae) / 2
 
 
 def determine_optimal_standard_deviation():
     """
-    Determine the optimal standard deviation.
+    Determine the optimal standard deviation from polling data.
 
-    This function loads data from a CSV file, calculates the weighted average
-    of 'margin_poll' for each race, and computes the standard deviation of the
-    absolute differences between the weighted averages and actual results.
+    This function loads polling data from a CSV file, calculates the weighted average
+    of the 'margin_poll' for each race using exponential decay based on time to election,
+    and computes the standard deviation of the absolute differences between these
+    weighted averages and the actual results.
 
     Returns:
         float: The standard deviation of the absolute differences.
     """
+    # Load data from CSV file
     data = pd.read_csv('raw_data/raw_polls.csv')
 
     results = []
 
+    # Calculate weighted averages and actual results for each race
     for race, group in data.groupby('race'):
-        # Calculate the weights for each poll in the cycle
+        # Apply exponential decay to calculate weights
         group['weight'] = np.exp(-0.0619 * group['time_to_election']) * np.sqrt(group['samplesize'])
+        group['weight'] /= group['weight'].sum()  # Normalize the weights
 
-        # Normalize the weights
-        group['weight'] /= group['weight'].sum()
-
-        # Calculate the weighted average of 'margin_poll' for the day
+        # Calculate the weighted average of 'margin_poll'
         weighted_avg = (group['margin_poll'] * group['weight']).sum()
+        actual_result = group['margin_actual'].mean()  # Get the actual result
 
-        # Get the actual result
-        actual_result = group['margin_actual'].mean()
-
-        # Append the race, weighted average, and actual result to the results
+        # Store race, weighted average, and actual result
         results.append([race, weighted_avg, actual_result])
 
-    # Convert the results to a DataFrame
+    # Create DataFrame from results
     results_df = pd.DataFrame(results, columns=['race', 'weighted_avg', 'actual_result'])
 
-    # Calculate the absolute differences between 'weighted_avg' and 'actual_result'
+    # Compute the standard deviation of absolute differences
     std_abs_diff = np.abs(results_df['weighted_avg'] - results_df['actual_result']).std()
 
     return std_abs_diff
 
 
 if __name__ == "__main__":
-    # determine_optimal_lambda()
-    print(determine_optimal_standard_deviation())
+
+    start_time = time.time()
+    determine_optimal_lambda()
+    print("Determined the optimal lambda.")
+    print(f"Time elapsed: {time.time() - start_time:.2f} seconds")
+
+    start_time = time.time()
+    determine_optimal_standard_deviation()
+    print("Determined the optimal standard deviation.")
+    print(f"Time elapsed: {time.time() - start_time:.2f} seconds")
