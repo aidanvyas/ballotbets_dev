@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 import os
 import io
 import time
+from scipy.stats import norm
 
 
 # Hard-coded values
@@ -212,6 +213,88 @@ def create_state_polling_averages():
         print(f"Finished processing {state} polling data.")
 
 
+def calculate_victory_probabilities(csv_directory, standard_deviation):
+    """
+    Calculate the probabilistic chance of victory for each candidate in each state's CSV file.
+
+    Args:
+        csv_directory (str): The directory containing the state CSV files.
+        standard_deviation (float): The standard deviation to use for the normal distribution.
+    """
+    for csv_file in os.listdir(csv_directory):
+        if csv_file.endswith('_polling_averages.csv'):
+            csv_path = os.path.join(csv_directory, csv_file)
+            state_averages = pd.read_csv(csv_path)
+
+            # Calculate the margin and the probabilistic chance of victory
+            state_averages['Margin'] = state_averages['Joe Biden'] - state_averages['Donald Trump']
+            state_averages['Biden Victory Chance'] = norm.cdf(state_averages['Margin'] / standard_deviation)
+            state_averages['Trump Victory Chance'] = 1 - state_averages['Biden Victory Chance']
+
+            # Save the updated DataFrame back to the CSV file
+            state_averages.to_csv(csv_path, index=False)
+
+            print(f"Updated victory probabilities in {csv_file}")
+
+def simulate_election(csv_directory, electoral_votes_csv, num_simulations=10000):
+    """
+    Simulate the election outcome based on the probabilistic chances of victory in each state.
+
+    Args:
+        csv_directory (str): The directory containing the state CSV files with victory probabilities.
+        electoral_votes_csv (str): The CSV file containing the electoral votes for each state.
+        num_simulations (int): The number of simulations to run. Default is 10,000.
+    """
+    # Read the electoral votes data
+    electoral_votes_df = pd.read_csv(electoral_votes_csv)
+    electoral_votes = electoral_votes_df.set_index('State')['ElectoralVotes'].to_dict()
+
+    # Preload the latest victory chances for each state
+    state_victory_chances = {}
+    for csv_file in os.listdir(csv_directory):
+        if csv_file.endswith('_polling_averages.csv'):
+            csv_path = os.path.join(csv_directory, csv_file)
+            state_averages = pd.read_csv(csv_path)
+            state = csv_file.replace('_polling_averages.csv', '')
+            state_victory_chances[state] = {
+                'Biden': state_averages['Biden Victory Chance'].iloc[-1],
+                'Trump': state_averages['Trump Victory Chance'].iloc[-1]
+            }
+
+    # Initialize counters for the number of wins for each candidate
+    biden_wins = 0
+    trump_wins = 0
+
+    # Run the simulations
+    for _ in range(num_simulations):
+        biden_electoral_votes = 0
+        trump_electoral_votes = 0
+
+        # Simulate the election outcome for each state
+        for state, victory_chances in state_victory_chances.items():
+            if np.random.rand() < victory_chances['Biden']:
+                biden_electoral_votes += electoral_votes[state]
+            else:
+                trump_electoral_votes += electoral_votes[state]
+
+        # Determine the winner of the simulation
+        if biden_electoral_votes > trump_electoral_votes:
+            biden_wins += 1
+        else:
+            trump_wins += 1
+
+    # Calculate the percent chance of victory for each candidate
+    biden_victory_percent = (biden_wins / num_simulations) * 100
+    trump_victory_percent = (trump_wins / num_simulations) * 100
+
+    # Output the results to a CSV file
+    results_df = pd.DataFrame({
+        'Candidate': ['Joe Biden', 'Donald Trump'],
+        'Chance of Victory (%)': [biden_victory_percent, trump_victory_percent]
+    })
+    results_df.to_csv('/home/ubuntu/ballotbets_dev/state_polling_averages/election_simulation_results.csv', index=False)
+
+    print(f"Simulation complete. Biden's chance of victory: {biden_victory_percent}%, Trump's chance of victory: {trump_victory_percent}%")
 
 if __name__ == '__main__':
     url = "https://projects.fivethirtyeight.com/polls/data/president_polls.csv"
@@ -232,3 +315,5 @@ if __name__ == '__main__':
     create_state_polling_averages()
     print("Finished creating state polling averages.")
     print(f"Time elapsed: {time.time() - start_time:.2f} seconds")
+
+    simulate_election('state_polling_averages', 'electoral_votes.csv')
