@@ -117,9 +117,8 @@ const USAMap = ({ winProbabilitiesCsv }) => {
     // Determine the color of the state or district based on Biden's win probability
     const stateFips = feature.properties.STATEFP;
     const stateName = stateFipsMapping[stateFips];
-    const probability = winProbabilities[stateName];
-    if (typeof probability === 'undefined') {
-      console.error(`No win probability found for: ${stateName}`);
+    if (!stateName || !winProbabilities.hasOwnProperty(stateName)) {
+      console.error(`Win probability data missing for: ${stateFips} - ${stateName}`);
       return {
         fillColor: 'grey',
         weight: 2,
@@ -128,6 +127,7 @@ const USAMap = ({ winProbabilitiesCsv }) => {
         fillOpacity: 0.7
       };
     }
+    const probability = winProbabilities[stateName];
     const blueIntensity = probability * 255;
     const redIntensity = (1 - probability) * 255;
     const color = `rgb(${redIntensity}, 0, ${blueIntensity})`;
@@ -146,10 +146,10 @@ const USAMap = ({ winProbabilitiesCsv }) => {
     // This can include binding popups, styling, etc.
     const stateFips = feature.properties.STATEFP;
     const stateName = stateFipsMapping[stateFips];
-    const probability = winProbabilities[stateName];
-    if (typeof probability === 'undefined') {
-      layer.bindPopup(`${stateName}: No data available`);
+    if (!stateName || !winProbabilities.hasOwnProperty(stateName)) {
+      layer.bindPopup(`Data not available for: ${stateFips} - ${stateName}`);
     } else {
+      const probability = winProbabilities[stateName];
       layer.bindPopup(`${stateName}: ${probability * 100}% chance`);
     }
   };
