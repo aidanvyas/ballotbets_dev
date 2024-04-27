@@ -117,8 +117,9 @@ const USAMap = ({ winProbabilitiesCsv }) => {
     // Determine the color of the state or district based on Biden's win probability
     const stateFips = feature.properties.STATEFP;
     const stateName = stateFipsMapping[stateFips];
-    if (!stateName || !winProbabilities.hasOwnProperty(stateName)) {
-      console.error(`Win probability data missing for: ${stateFips} - ${stateName}`);
+    // Check if the stateFips is one of the undefined values or if stateName is not found in winProbabilities
+    if (['60', '66', '69', '72', '78'].includes(stateFips) || !winProbabilities.hasOwnProperty(stateName)) {
+      // Return a default style for undefined 'STATEFP' values or missing data
       return {
         fillColor: 'grey',
         weight: 2,
@@ -127,11 +128,11 @@ const USAMap = ({ winProbabilitiesCsv }) => {
         fillOpacity: 0.7
       };
     }
+    // If stateName is found, proceed with color calculation
     const probability = winProbabilities[stateName];
     const blueIntensity = probability * 255;
     const redIntensity = (1 - probability) * 255;
     const color = `rgb(${redIntensity}, 0, ${blueIntensity})`;
-    console.log(`Color for ${stateName}:`, color); // Log to check calculated color
     return {
       fillColor: color,
       weight: 2,
