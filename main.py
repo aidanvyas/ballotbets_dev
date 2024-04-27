@@ -9,10 +9,11 @@ for the candidates based on an exponential function and sample size.
 import pandas as pd
 import numpy as np
 import requests
-from datetime import datetime, timedelta
+from datetime import timedelta
 import os
 import io
 import time
+from scipy.stats import norm
 
 
 # Hard-coded values
@@ -92,7 +93,7 @@ def create_national_polling_averages(input_file, output_file):
 
     # Create the output file and write the header.
     with open(output_file, 'w') as file:
-        file.write("Date,Joe Biden,Donald Trump\n")
+        file.write("Date,Joe Biden,Donald Trump,Joe Biden Win Probability,Donald Trump Win Probability\n")
 
     # Iterate over the dates and calculate the daily weighted averages.
     for day in dates:
@@ -113,9 +114,20 @@ def create_national_polling_averages(input_file, output_file):
         biden_avg = (polls['Joe Biden'] * polls['weight']).sum()
         trump_avg = (polls['Donald Trump'] * polls['weight']).sum()
 
-        # Open the output file in append mode and write the daily averages.
+        # Calculate the margin between Biden and Trump.
+        margin = biden_avg - trump_avg
+
+        # Calculate the z-score based on the margin and standard deviation.
+        z_score = margin / STANDARD_DEVIATION
+
+        # Calculate the win probabilities using the cumulative distribution function (CDF) of the standard normal distribution.
+        biden_win_prob = norm.cdf(z_score)
+        trump_win_prob = 1 - biden_win_prob
+
+        # Open the output file in append mode and write the daily averages and win probabilities.
         with open(output_file, 'a') as file:
-            file.write(f"{day.strftime('%Y-%m-%d')},{biden_avg},{trump_avg}\n")
+            file.write(f"{day.strftime('%Y-%m-%d')},{biden_avg},{trump_avg},{biden_win_prob},{trump_win_prob}\n")
+
 
 
 def create_state_polling_averages():
@@ -205,16 +217,27 @@ def create_state_polling_averages():
         # Rename the 'index' column to 'Date'
         state_averages.rename(columns={'index': 'Date'}, inplace=True)
 
-        # Select only the desired columns: 'Date', 'Joe Biden', 'Donald Trump'
-        state_averages = state_averages[['Date', 'Joe Biden', 'Donald Trump']]
+        # Calculate the margin between Biden and Trump.
+        state_averages['Margin'] = state_averages['Joe Biden'] - state_averages['Donald Trump']
+
+        # Calculate the z-score based on the margin and standard deviation.
+        state_averages['Z-Score'] = state_averages['Margin'] / STANDARD_DEVIATION
+
+        # Convert the 'Z-Score' column to float
+        state_averages['Z-Score'] = state_averages['Z-Score'].astype(float)
+
+        # Calculate the win probabilities using the cumulative distribution function (CDF) of the standard normal distribution.
+        state_averages['Joe Biden Win Probability'] = norm.cdf(state_averages['Z-Score'])
+        state_averages['Donald Trump Win Probability'] = 1 - state_averages['Joe Biden Win Probability']
+
+        # Select the desired columns: 'Date', 'Joe Biden', 'Donald Trump', 'Joe Biden Win Probability', 'Donald Trump Win Probability'
+        state_averages = state_averages[['Date', 'Joe Biden', 'Donald Trump', 'Joe Biden Win Probability', 'Donald Trump Win Probability']]
 
         # Save the state polling averages to the CSV file, overwriting the existing file
         csv_file = f'state_polling_averages/{state}_polling_averages.csv'
         state_averages.to_csv(csv_file, index=False, mode='w')
 
         print(f"Finished processing {state} polling data.")
-
-
 
 
 
