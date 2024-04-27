@@ -62,6 +62,9 @@ def get_polling_data(url, output_file):
     # Filter out rows where both candidates have 0 percentage.
     merged_poll_data = merged_poll_data[(merged_poll_data['Joe Biden'] != 0) & (merged_poll_data['Donald Trump'] != 0)]
 
+    # Create the output directory if it does not exist.
+    os.makedirs(os.path.dirname(output_file), exist_ok=True)
+
     # Save the processed polling data to a CSV file.
     merged_poll_data.to_csv(output_file, index=False)
 
@@ -129,59 +132,45 @@ def create_national_polling_averages(input_file, output_file):
             file.write(f"{day.strftime('%Y-%m-%d')},{biden_avg},{trump_avg},{biden_win_prob},{trump_win_prob}\n")
 
 
-
 def create_state_polling_averages():
-
-    # Read in the csv files.
+    # Read in the csv files once
     past_results = pd.read_csv('raw_data/raw_past_results.csv')
-    national_polling = pd.read_csv('president_polls_daily.csv')
-    state_polling = pd.read_csv('processed_polls.csv')
+    national_polling = pd.read_csv('processed_data/president_polls_daily.csv')
+    state_polling = pd.read_csv('processed_data/processed_polls.csv')
 
-    # Remove national polls from the state polling data.
-    states = past_results[past_results['Location'] != 'National']['Location'].unique()
-
-    # Convert dates to datetime objects.
+    # Convert dates to datetime objects immediately
     national_polling['Date'] = pd.to_datetime(national_polling['Date'])
     state_polling['end_date'] = pd.to_datetime(state_polling['end_date'])
 
-    # Set the start and end dates for the state polling averages.
+    # Filter out national data and find unique states early
+    states = past_results.loc[past_results['Location'] != 'National', 'Location'].unique()
+
+    # Determine the date range for averaging
     start_date = national_polling['Date'].min() + timedelta(days=14)
     end_date = national_polling['Date'].max()
-
-    # Create a date range from the start to end date.
     date_range = pd.date_range(start=start_date, end=end_date)
 
-    # Create a DataFrame to store the state polling averages.
-    state_averages = pd.DataFrame(index=date_range, columns=['Joe Biden', 'Donald Trump'])
+    # Pre-calculate the past national shares and total votes for optimization
+    national_past_results = past_results[past_results['Location'] == 'National']
+    biden_past_national_share = national_past_results['Biden Share'].values[0]
+    trump_past_national_share = national_past_results['Trump Share'].values[0]
 
-    # Create a directory to store the state polling averages.
-    os.makedirs('state_polling_averages', exist_ok=True)
+    # Prepare DataFrame to hold results
+    biden_averages = pd.DataFrame(index=date_range, columns=states)
+    trump_averages = pd.DataFrame(index=date_range, columns=states)
+    biden_win_probabilities = pd.DataFrame(index=date_range, columns=states)
 
-    # Iterate through the states.
+    # Vectorize where possible
     for state in states:
-        # Get the polling and past results for the state.
         state_polls = state_polling[state_polling['state'] == state]
         state_past_results = past_results[past_results['Location'] == state]
-
-        # Get the past shares for Biden and Trump.
         biden_past_share = state_past_results['Biden Share'].values[0]
         trump_past_share = state_past_results['Trump Share'].values[0]
 
-        # Create a new DataFrame to store the state polling averages for the current state.
-        state_averages = pd.DataFrame(index=date_range, columns=['Joe Biden', 'Donald Trump'])
-
-        # Iterate through the date range.
         for date in date_range:
-
-            # Calculate the estimated poll date.
-            estimated_poll_date = date - timedelta(days=14)
-
+            # Reduce repeated filtering and calculations
             national_polls_to_date = national_polling[national_polling['Date'] <= date]
             current_total = national_polls_to_date.iloc[-1]['Joe Biden'] + national_polls_to_date.iloc[-1]['Donald Trump']
-
-            national_past_results = past_results[past_results['Location'] == 'National']
-            biden_past_national_share = national_past_results['Biden Share'].values[0]
-            trump_past_national_share = national_past_results['Trump Share'].values[0]
 
             biden_boost = (national_polls_to_date.iloc[-1]['Joe Biden'] / current_total) / biden_past_national_share
             trump_boost = (national_polls_to_date.iloc[-1]['Donald Trump'] / current_total) / trump_past_national_share
@@ -189,62 +178,96 @@ def create_state_polling_averages():
             biden_estimated_share = biden_boost * biden_past_share * current_total
             trump_estimated_share = trump_boost * trump_past_share * current_total
 
+            # Process state-specific data
             state_polls_to_date = state_polls[state_polls['end_date'] <= date].copy()
 
             if not state_polls_to_date.empty:
-                state_polls_to_date.loc[:, 'weight'] = np.exp(-LAMBDA * (date - state_polls_to_date['end_date']).dt.days)
-                state_polls_to_date.loc[:, 'weight'] /= state_polls_to_date['weight'].sum()
+                state_polls_to_date['weight'] = np.exp(-0.1 * (date - state_polls_to_date['end_date']).dt.days)  # Assuming LAMBDA=0.1
+                state_polls_to_date['weight'] /= state_polls_to_date['weight'].sum()
                 biden_state_avg = (state_polls_to_date['Joe Biden'] * state_polls_to_date['weight']).sum()
                 trump_state_avg = (state_polls_to_date['Donald Trump'] * state_polls_to_date['weight']).sum()
             else:
                 biden_state_avg = biden_estimated_share
                 trump_state_avg = trump_estimated_share
 
-            estimated_poll = pd.DataFrame({
-                'state': [state],
-                'end_date': [estimated_poll_date],
-                'Joe Biden': [biden_estimated_share],
-                'Donald Trump': [trump_estimated_share]
-            })
-            state_polls = pd.concat([state_polls, estimated_poll], ignore_index=True)
+            # Save averages and probabilities
+            biden_averages.loc[date, state] = biden_state_avg
+            trump_averages.loc[date, state] = trump_state_avg
 
-            state_averages.loc[date, 'Joe Biden'] = biden_state_avg
-            state_averages.loc[date, 'Donald Trump'] = trump_state_avg
+            margin = biden_state_avg - trump_state_avg
+            z_score = margin / STANDARD_DEVIATION
+            biden_win_prob = norm.cdf(z_score)
+            biden_win_probabilities.loc[date, state] = biden_win_prob
 
-        # Reset the index
-        state_averages.reset_index(inplace=True)
+    # Reset the index and rename the 'index' column to 'Date'
+    biden_averages.reset_index(inplace=True)
+    biden_averages.rename(columns={'index': 'Date'}, inplace=True)
+    trump_averages.reset_index(inplace=True)
+    trump_averages.rename(columns={'index': 'Date'}, inplace=True)
+    biden_win_probabilities.reset_index(inplace=True)
+    biden_win_probabilities.rename(columns={'index': 'Date'}, inplace=True)
 
-        # Rename the 'index' column to 'Date'
-        state_averages.rename(columns={'index': 'Date'}, inplace=True)
+    # Output to CSV
+    biden_averages.to_csv('processed_data/biden_state_averages.csv', index=False)
+    trump_averages.to_csv('processed_data/trump_state_averages.csv', index=False)
+    biden_win_probabilities.to_csv('processed_data/biden_win_probabilities.csv', index=False)
 
-        # Calculate the margin between Biden and Trump.
-        state_averages['Margin'] = state_averages['Joe Biden'] - state_averages['Donald Trump']
 
-        # Calculate the z-score based on the margin and standard deviation.
-        state_averages['Z-Score'] = state_averages['Margin'] / STANDARD_DEVIATION
+def simulate_electoral_votes():
+    # Load the electoral votes data
+    electoral_votes = pd.read_csv('raw_data/raw_electoral_votes.csv')
+    electoral_votes.set_index('Location', inplace=True)
 
-        # Convert the 'Z-Score' column to float
-        state_averages['Z-Score'] = state_averages['Z-Score'].astype(float)
+    # Load Biden's win probabilities
+    biden_win_probs = pd.read_csv('processed_data/biden_win_probabilities.csv')
 
-        # Calculate the win probabilities using the cumulative distribution function (CDF) of the standard normal distribution.
-        state_averages['Joe Biden Win Probability'] = norm.cdf(state_averages['Z-Score'])
-        state_averages['Donald Trump Win Probability'] = 1 - state_averages['Joe Biden Win Probability']
+    # Define the correlation matrix for the states
+    states = electoral_votes.index.tolist()
+    num_states = len(states)
+    correlation_matrix = np.full((num_states, num_states), 0.5)  # Example: 0.5 correlation between all pairs
+    np.fill_diagonal(correlation_matrix, 1)
 
-        # Select the desired columns: 'Date', 'Joe Biden', 'Donald Trump', 'Joe Biden Win Probability', 'Donald Trump Win Probability'
-        state_averages = state_averages[['Date', 'Joe Biden', 'Donald Trump', 'Joe Biden Win Probability', 'Donald Trump Win Probability']]
+    # Number of simulations
+    num_simulations = 10000
 
-        # Save the state polling averages to the CSV file, overwriting the existing file
-        csv_file = f'state_polling_averages/{state}_polling_averages.csv'
-        state_averages.to_csv(csv_file, index=False, mode='w')
+    results = []
 
-        print(f"Finished processing {state} polling data.")
+    # Process each date in Biden's win probability file
+    for date in biden_win_probs['Date'].unique():
+        daily_data = biden_win_probs[biden_win_probs['Date'] == date]
+        
+        state_indices = [states.index(state) for state in states if state in daily_data.columns]
+        win_probs = daily_data[states].values[0, state_indices]
+        
+        # Generate correlated random outcomes based on the win probabilities
+        mean = np.arcsin(2 * win_probs - 1)  # Apply a sin transformation for the mean
+        correlated_normals = np.random.multivariate_normal(mean, correlation_matrix, size=num_simulations)
+        correlated_outcomes = (np.sin(correlated_normals) + 1) / 2 > 0.5  # Convert back and determine win/loss
 
+        # Calculate electoral votes for each simulation
+        electoral_votes_array = electoral_votes.loc[states, 'Electoral Votes'].values[state_indices]
+        simulated_electoral_votes = (correlated_outcomes * electoral_votes_array).sum(axis=1)
+        
+        # Calculate the probability of Biden winning in each simulation
+        biden_wins = (simulated_electoral_votes > 269).mean()
+        trump_wins = 1 - biden_wins
+
+        # Append results for the current date
+        results.append({
+            'Date': date,
+            'Biden Win Probability': biden_wins,
+            'Trump Win Probability': trump_wins
+        })
+
+    # Convert results to DataFrame and save to CSV
+    results_df = pd.DataFrame(results)
+    results_df.to_csv('processed_data/simulated_national_election_outcomes_correlated.csv', index=False)
 
 
 if __name__ == '__main__':
     url = "https://projects.fivethirtyeight.com/polls/data/president_polls.csv"
-    processed_file = 'processed_polls.csv'
-    output_file = 'president_polls_daily.csv'
+    processed_file = 'processed_data/processed_polls.csv'
+    output_file = 'processed_data/president_polls_daily.csv'
 
     start_time = time.time()
     get_polling_data(url, processed_file)
@@ -259,4 +282,9 @@ if __name__ == '__main__':
     start_time = time.time()
     create_state_polling_averages()
     print("Finished creating state polling averages.")
+    print(f"Time elapsed: {time.time() - start_time:.2f} seconds")
+
+    start_time = time.time()
+    simulate_electoral_votes()
+    print("Finished calculating expected electoral votes.")
     print(f"Time elapsed: {time.time() - start_time:.2f} seconds")
