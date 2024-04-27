@@ -14,6 +14,7 @@ import os
 import io
 import time
 from scipy.stats import norm
+import matplotlib.pyplot as plt
 
 
 # Hard-coded values
@@ -182,7 +183,7 @@ def create_state_polling_averages():
             state_polls_to_date = state_polls[state_polls['end_date'] <= date].copy()
 
             if not state_polls_to_date.empty:
-                state_polls_to_date['weight'] = np.exp(-0.1 * (date - state_polls_to_date['end_date']).dt.days)  # Assuming LAMBDA=0.1
+                state_polls_to_date['weight'] = np.exp(-LAMBDA * (date - state_polls_to_date['end_date']).dt.days)  # Assuming LAMBDA=0.1
                 state_polls_to_date['weight'] /= state_polls_to_date['weight'].sum()
                 biden_state_avg = (state_polls_to_date['Joe Biden'] * state_polls_to_date['weight']).sum()
                 trump_state_avg = (state_polls_to_date['Donald Trump'] * state_polls_to_date['weight']).sum()
@@ -250,18 +251,57 @@ def simulate_electoral_votes():
         
         # Calculate the probability of Biden winning in each simulation
         biden_wins = (simulated_electoral_votes > 269).mean()
-        trump_wins = 1 - biden_wins
+        tie = (simulated_electoral_votes == 269).mean()
+        trump_wins = 1 - biden_wins - tie
 
         # Append results for the current date
         results.append({
             'Date': date,
             'Biden Win Probability': biden_wins,
-            'Trump Win Probability': trump_wins
+            'Trump Win Probability': trump_wins,
+            'Tie Probability': tie
         })
+        
+        print(f"Date: {date}, Biden Win Probability: {biden_wins:.2f}, Trump Win Probability: {trump_wins:.2f}, Tie Probability: {tie:.2f}")
 
     # Convert results to DataFrame and save to CSV
     results_df = pd.DataFrame(results)
     results_df.to_csv('processed_data/simulated_national_election_outcomes_correlated.csv', index=False)
+
+
+def plot_win_probabilities(file_path):
+    """
+    Plot the probabilities of Biden winning, Trump winning, and a tie.
+
+    Args:
+        file_path (str): Path to the CSV file containing the election outcomes.
+    """
+    # Load the data
+    data = pd.read_csv(file_path)
+    
+    # Ensure 'Date' is in datetime format
+    data['Date'] = pd.to_datetime(data['Date'])
+    
+    # Filter data starting from 2023
+    data = data[data['Date'] >= pd.Timestamp('2023-01-01')]
+    
+    # Plotting
+    plt.figure(figsize=(12, 8))
+    plt.plot(data['Date'], data['Biden Win Probability']*100, label='Joe Biden', color='blue')
+    plt.plot(data['Date'], data['Trump Win Probability']*100, label='Donald Trump', color='red')
+    plt.plot(data['Date'], data['Tie Probability']*100, label='Tie', color='yellow')
+
+    plt.title('Election Win Probabilities Over Time')
+    plt.xlabel('Date')
+    plt.ylabel('Probability (%)')
+    plt.legend()
+    plt.grid(True)
+    plt.ylim(0, 100)  # Ensuring the y-axis goes from 0 to 100%
+
+    # Create the output directory if it does not exist
+    os.makedirs('plots', exist_ok=True)
+
+    plt.savefig('plots/election_win_probabilities.png')
 
 
 if __name__ == '__main__':
@@ -287,4 +327,9 @@ if __name__ == '__main__':
     start_time = time.time()
     simulate_electoral_votes()
     print("Finished calculating expected electoral votes.")
+    print(f"Time elapsed: {time.time() - start_time:.2f} seconds")
+
+    start_time = time.time()
+    plot_win_probabilities('processed_data/simulated_national_election_outcomes_correlated.csv')
+    print("Finished plotting election win probabilities.")
     print(f"Time elapsed: {time.time() - start_time:.2f} seconds")
