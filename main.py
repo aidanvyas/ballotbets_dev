@@ -246,7 +246,7 @@ def simulate_election(csv_directory, electoral_votes_csv, num_simulations=10000)
         num_simulations (int): The number of simulations to run. Default is 10,000.
     """
     # Read the electoral votes data
-    electoral_votes_df = pd.read_csv('/home/ubuntu/ballotbets_dev/raw_data/electoral_college_votes_2024.csv')
+    electoral_votes_df = pd.read_csv(electoral_votes_csv)
     electoral_votes = electoral_votes_df.set_index('State')['ElectoralVotes'].to_dict()
 
     # Preload the latest victory chances for each state
@@ -255,7 +255,7 @@ def simulate_election(csv_directory, electoral_votes_csv, num_simulations=10000)
         if csv_file.endswith('_polling_averages.csv'):
             csv_path = os.path.join(csv_directory, csv_file)
             state_averages = pd.read_csv(csv_path)
-            state = csv_file.replace('_polling_averages.csv', '')
+            state = csv_file.replace('_polling_averages.csv', '').replace('DC', 'District of Columbia')
             state_victory_chances[state] = {
                 'Biden': state_averages['Biden Victory Chance'].iloc[-1],
                 'Trump': state_averages['Trump Victory Chance'].iloc[-1]
