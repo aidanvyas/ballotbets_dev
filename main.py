@@ -316,4 +316,5 @@ if __name__ == '__main__':
     print("Finished creating state polling averages.")
     print(f"Time elapsed: {time.time() - start_time:.2f} seconds")
 
-    simulate_election('state_polling_averages', 'electoral_votes.csv')
+    calculate_victory_probabilities('state_polling_averages', STANDARD_DEVIATION)
+    simulate_election('state_polling_averages', '/home/ubuntu/ballotbets_dev/raw_data/electoral_college_votes_2024.csv')
